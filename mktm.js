@@ -11,7 +11,8 @@ const MAX_PLAYER_PER_RACE = 4; // doesn't support 8
 
 const DEFAULT_ROUND_NB = 3;
 
-const MKTM_FILE = process.env.MKTM_FILE || 'mktm-tournament.json';
+const DEFAULT_MKTM_FILE = 'mktm-tournament.json';
+const MKTM_FILE = process.env.MKTM_FILE || DEFAULT_MKTM_FILE;
 
 const ACTION_KEY = '_action';
 const ACTION_ARGS_KEY = '_action_args';
@@ -66,14 +67,14 @@ const formatArgs = (args) => {
     }, {});
 };
 
-const startTournament = (saveTo, playerNames = undefined, lazy = undefined, roundNb = undefined) => {
-    if (lazy && !isNaN(+lazy)) {
-        playerNames = [];
-        for (let i = 0; i < Math.abs(+lazy); i++) playerNames.push(`Player${i+1}`);
-    }
-    if (isNaN(+roundNb) || +roundNb < 1) log.error('Not a valid round number');
-    if (!playerNames) startTournamentFromPrompt(roundNb, saveTo);
-    else startTournamentFromPlayerNames(playerNames, roundNb, saveTo);
+const startTournament = (data) => {
+    const { file: saveTo, players: givenPlayerNames, lazy, rounds } = data;
+    const generateDefaultPlayerNames = (quantity, values = []) =>
+        quantity > 0 ? generateDefaultPlayerNames(quantity - 1, [`Player${quantity}`, ...values]) : values;
+    const generatedPlayerNames = lazy && !isNaN(+lazy) ? generateDefaultPlayerNames(+lazy) : null;
+    if (isNaN(+rounds) || +rounds < 1) log.error('Not a valid round number');
+    if (!givenPlayerNames && !generatedPlayerNames) startTournamentFromPrompt(rounds, saveTo);
+    else startTournamentFromPlayerNames(generatedPlayerNames || givenPlayerNames, rounds, saveTo);
 };
 
 const startTournamentFromPrompt = (roundNb, saveTo) => {
@@ -155,7 +156,7 @@ const displayTournament = (tournamentData, showLeaderboard = false) => {
     const formatResultLine = (padLength = 0, medalIndex = {}) => (player) =>
         log.format.blue(player.name) +
         log.format.grey(''.padStart(padLength - player.name.length - String(player.score || '').length, '.')) +
-        log.format.yellow(String(player.score || '')) +
+        log.format.yellow(String(player.score || log.format.grey(0))) +
         (medalIndex[player.score] ? ` ${medalIndex[player.score]}` : '');
 
     log.line('');
@@ -313,28 +314,55 @@ const params = formatArgs(args);
 
 switch (params[ACTION_KEY]) {
     case 'new':
-        startTournament(params.file || MKTM_FILE, params.players, params.lazy, params.round || DEFAULT_ROUND_NB);
+        startTournament({
+            file: params.file || params.f || MKTM_FILE,
+            players: params.players || params.p,
+            lazy: params.lazy || params.l,
+            rounds: params.rounds || params.r || DEFAULT_ROUND_NB
+        });
         break;
     case 'status':
-        readTournamentFromFile(params.file || MKTM_FILE);
+        readTournamentFromFile(params.file || params.f || MKTM_FILE);
         break;
     case 'results':
         const roundNb = params[ACTION_ARGS_KEY] && params[ACTION_ARGS_KEY].length && !isNaN(+params[ACTION_ARGS_KEY][0]) ?
             +params[ACTION_ARGS_KEY][0] : 0;
-        startSaveRaceResults(roundNb, params.file || MKTM_FILE);
+        startSaveRaceResults(roundNb, params.file || params.f || MKTM_FILE);
         break;
     case 'leaderboard':
-        readTournamentFromFile(params.file || MKTM_FILE, true);
+        readTournamentFromFile(params.file || params.f || MKTM_FILE, true);
         break;
     default:
-        log.line(`${log.format.bold('Mario Kart Tournament Maker')}
-Usage:
-> ${log.format.blue(callCmd)} new [--round roundNb] [--file filename] [--players player1 player2 player3...] [--lazy playerNb]
-  ${log.format.grey('Creates a new tournament')}
-> ${log.format.blue(callCmd)} status [--file filename]
-  ${log.format.grey('Displays existing tournament')}
-> ${log.format.blue(callCmd)} results [raceNb] [--file filename]
-  ${log.format.grey('Enters the results of a race')}
-> ${log.format.blue(callCmd)} leaderboard [--file filename]
-  ${log.format.grey('Show the leaderboard')}`);
+        log.line(`
+${log.format.bold('Mario Kart Tournament Maker')}
+Usage: node mktm.js <command> [options]
+
+${log.format.bold('COMMANDS')}
+
+  ${log.format.blue(log.format.bold('new'))}
+  Creates a new tournament.
+  Options:
+    ${log.format.bold('--rounds')} NUMBER, ${log.format.bold('-r')} NUMBER
+            Number of rounds of the tournament. ${log.format.grey(`Default: ${DEFAULT_ROUND_NB}`)}
+    ${log.format.bold('--players')} NAME1 NAME2..., ${log.format.bold('-p')} NAME1 NAME2...
+            Names of the players. If none provided, will ask for them before starting.
+    ${log.format.bold('--lazy')} NUMBER, ${log.format.bold('-l')} NUMBER
+            Creates a new game only with a number of players, default names are attributed.
+    
+  ${log.format.blue(log.format.bold('status'))}
+  Displays the tournament's races status.
+    
+  ${log.format.blue(log.format.bold('results'))} [RACE_NB]
+  Enters the results of a race. If no race number provided, will ask for the first unfinished race.
+    
+  ${log.format.blue(log.format.bold('leaderboard'))}
+  Displays the leaderboard.
+
+${log.format.bold('GLOBAL OPTIONS')}
+    
+    ${log.format.bold('--file')} FILE, ${log.format.bold('-f')} FILE
+            Path of the tournament save file to write to / read from. ${log.format.grey(`Default: ${DEFAULT_MKTM_FILE}`)}
+            Can also be provided through the env variable MKTM_FILE.
+
+`);
 }
