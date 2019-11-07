@@ -19,7 +19,7 @@ const ACTION_ARGS_KEY = '_action_args';
 
 const log = {
     line: (t, nl = true) => process.stdout.write(t + (nl ? `\n` : '')),
-    error: (t) => { log.line(log.format.red(t)); process.exit(); },
+    error: (t) => { log.line(log.format.red(`ERROR: ${t}`)); process.exit(); },
     format: {
         bold: t => `\x1b[1m${t}\x1b[22m`,
         grey: t => `\x1b[90m${t}\x1b[0m`,
@@ -69,15 +69,25 @@ const formatArgs = (args) => {
 
 const startTournament = (data) => {
     const { file: saveTo, players: givenPlayerNames, lazy, rounds } = data;
+    const startTournamentCallback = names => startTournamentFromPlayerNames(names, rounds, saveTo);
     const generateDefaultPlayerNames = (quantity, values = []) =>
         quantity > 0 ? generateDefaultPlayerNames(quantity - 1, [`Player${quantity}`, ...values]) : values;
     const generatedPlayerNames = lazy && !isNaN(+lazy) ? generateDefaultPlayerNames(+lazy) : null;
     if (isNaN(+rounds) || +rounds < 1) log.error('Not a valid round number');
-    if (!givenPlayerNames && !generatedPlayerNames) startTournamentFromPrompt(rounds, saveTo);
-    else startTournamentFromPlayerNames(generatedPlayerNames || givenPlayerNames, rounds, saveTo);
+    checkExistingTournamentFile(saveTo).then(() => {
+        if (!givenPlayerNames && !generatedPlayerNames) {
+            startTournamentFromPrompt(rounds, startTournamentCallback);
+        } else {
+            startTournamentCallback(generatedPlayerNames || givenPlayerNames);
+            process.exit();
+        }
+    }, () => {
+        log.line(`Creation aborted`);
+        process.exit();
+    });
 };
 
-const startTournamentFromPrompt = (roundNb, saveTo) => {
+const startTournamentFromPrompt = (roundNb, callback) => {
     const stdIn = process.stdin;
     stdIn.setEncoding('utf-8');
 
@@ -91,7 +101,7 @@ const startTournamentFromPrompt = (roundNb, saveTo) => {
     stdIn.on('data', (name) => {
         if (name === '\n') {
             log.line(log.format.bold(`Tournament created!`));
-            startTournamentFromPlayerNames(playerNames, roundNb, saveTo);
+            callback(playerNames);
             process.exit();
         } else {
             playerNames.push(name.replace(/ /g, '').replace('\n', ''));
@@ -104,7 +114,6 @@ const startTournamentFromPlayerNames = (playerNames, roundNb, saveTo) => {
     const tournamentData = initTournament(playerNames, roundNb);
     log.line('');
     log.line(log.format.bold('Welcome to the new tournament!'));
-    log.line(log.format.grey(`Nb. of rounds: ${tournamentData.rounds}`));
     displayTournament(tournamentData);
     saveTournamentFile(tournamentData, saveTo);
 };
@@ -130,8 +139,9 @@ const initNewRound = (players, globalShuffle = true) => {
 const initTournament = (playerNames, roundNb) => {
     const playerSet = new Set(playerNames);
     return {
-        players: [...playerSet],
         rounds: roundNb,
+        created: Date.now(),
+        players: [...playerSet],
         races: initNewRound([...playerSet]),
     };
 };
@@ -149,6 +159,11 @@ const getLeaderboard = (tournamentData) => {
 
 const displayTournament = (tournamentData, showLeaderboard = false) => {
     if (!tournamentData || !tournamentData.players || !tournamentData.races) return;
+
+    log.line('');
+    log.line(log.format.grey(`Created on: ${new Date(tournamentData.created)}`));
+    log.line(log.format.grey(`Nb. of rounds: ${tournamentData.rounds}`));
+    log.line(log.format.grey(`Nb. of players: ${tournamentData.players.length}`));
 
     let longestLineLength = array.max(tournamentData.races.map(r =>
         array.max(r.map(p => p.name.length + String(p.score || '').length))));
@@ -180,7 +195,7 @@ const displayTournament = (tournamentData, showLeaderboard = false) => {
     }
 
     for (let i in tournamentData.races) {
-        log.line(`🏁 Race ${1 + Number(i)}\n` +
+        log.line(`🏁 Match ${1 + Number(i)}\n` +
             tournamentData.races[i]
                 .sort((a, b) => b.score - a.score)
                 .map(formatResultLine(longestLineLength+1))
@@ -196,6 +211,30 @@ const readTournamentFromFile = (file, showLeaderboard = false) => {
         if (!tournamentData) log.error(`Can't read file ${file}`);
         displayTournament(tournamentData, showLeaderboard);
     });
+};
+
+const checkExistingTournamentFile = (saveTo) => {
+    if (!saveTo) return Promise.reject();
+    if (!fs.existsSync(saveTo))  return Promise.resolve();
+
+    log.line(`A tournament file ${log.format.bold(saveTo)} already exists, replace? ${log.format.grey(`(Y/n) `)}`, false);
+
+    const promise = new Promise(function(resolve, reject) {
+        const stdIn = process.stdin;
+        stdIn.setEncoding('utf-8');
+
+        stdIn.on('data', (data) => {
+            if (typeof data !== 'string') return;
+            const answer = data.toLowerCase().replace('\n', '');
+            if (answer === 'y' || answer === '') {
+                resolve();
+            } else if (answer === 'n') {
+                reject();
+            }
+        });
+    });
+
+    return promise;
 };
 
 const saveTournamentFile = (tournamentData, saveTo, verbose = true) => {
