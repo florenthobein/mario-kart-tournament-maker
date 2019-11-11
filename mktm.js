@@ -41,6 +41,62 @@ const array = {
     max: a => a.reduce((acc, v) => (v > acc) ? v : acc, 0), // [1, 4, 2] => 4
 };
 
+class TournamentHelper {
+    static readTournamentFile(file) {
+        if (!fs.existsSync(file)) log.error(`Tournament file ${file} does not exist`);
+        const fileContent = fs.readFileSync(file, { encoding: 'utf-8' });
+        const tournamentData = JSON.parse(fileContent);
+        if (!tournamentData) log.error(`Can't read file ${file}`);
+        return tournamentData;
+    }
+
+    static writeTournamentFile(tournamentData, file) {
+        if (!file) return;
+        const fileContent = JSON.stringify(tournamentData);
+        fs.writeFileSync(file, fileContent);
+    }
+
+    static generateDefaultPlayerNames(quantity, values = []) {
+        return quantity > 0 ? TournamentHelper.generateDefaultPlayerNames(quantity - 1, [`Player${quantity}`, ...values]) : values;
+    }
+
+    static formatPlayer(playerName) {
+        return { name: playerName };
+    }
+
+    static isRaceFinished(tournamentData, i) {
+        return (tournamentData.races[i] || []).reduce((acc, l) => acc && typeof l.score !== 'undefined', true);
+    }
+
+    static isRaceFull(tournamentData, i) {
+        return tournamentData.races[i].length >= MAX_PLAYER_PER_RACE;
+    }
+
+    static getFirstNotFullRace(tournamentData) {
+        for (let i in tournamentData.races) {
+            if (!TournamentHelper.isRaceFull(tournamentData, +i)) return tournamentData.races[i];
+        }
+        return null;
+    }
+
+    static getLastUnfinishedRace(tournamentData) {
+        for (let i in tournamentData.races) {
+            if (!TournamentHelper.isRaceFinished(tournamentData, +i)) return (+i)+1;
+        }
+        return null;
+    }
+
+    static getRaceQuantityPerRound(tournamentData) {
+        const playerTotal = tournamentData.players.length;
+        return Math.ceil(playerTotal / MAX_PLAYER_PER_RACE); // is it true, though
+    }
+
+    static getCurrentRound(tournamentData) {
+        const racesPerRound = TournamentHelper.getRaceQuantityPerRound(tournamentData);
+        return Math.floor(tournamentData.races.length / racesPerRound);
+    }
+}
+
 const formatArgs = (args) => {
     let currentParam;
     return args.reduce((acc, value) => {
@@ -69,45 +125,46 @@ const formatArgs = (args) => {
 
 const startTournament = (data) => {
     const { file: saveTo, players: givenPlayerNames, lazy, rounds } = data;
-    const startTournamentCallback = names => startTournamentFromPlayerNames(names, rounds, saveTo);
-    const generateDefaultPlayerNames = (quantity, values = []) =>
-        quantity > 0 ? generateDefaultPlayerNames(quantity - 1, [`Player${quantity}`, ...values]) : values;
-    const generatedPlayerNames = lazy && !isNaN(+lazy) ? generateDefaultPlayerNames(+lazy) : null;
+    const generatedPlayerNames = lazy && !isNaN(+lazy) ? TournamentHelper.generateDefaultPlayerNames(+lazy) : null;
+    const playerNames = generatedPlayerNames || givenPlayerNames;
     if (isNaN(+rounds) || +rounds < 1) log.error('Not a valid round number');
-    checkExistingTournamentFile(saveTo).then(() => {
-        if (!givenPlayerNames && !generatedPlayerNames) {
-            startTournamentFromPrompt(rounds, startTournamentCallback);
-        } else {
-            startTournamentCallback(generatedPlayerNames || givenPlayerNames);
+    checkExistingTournamentFile(saveTo)
+        .then(() => !playerNames ? askForPlayerNames() : false)
+        .then(askedPlayerNames => {
+            startTournamentFromPlayerNames(askedPlayerNames || playerNames, rounds, saveTo);
             process.exit();
-        }
-    }, () => {
-        log.line(`Creation aborted`);
-        process.exit();
-    });
+        })
+        .catch(() => {
+            log.line(`Creation aborted`);
+            process.exit();
+        });
 };
 
-const startTournamentFromPrompt = (roundNb, callback) => {
-    const stdIn = process.stdin;
-    stdIn.setEncoding('utf-8');
+const askForPlayerNames = (text = 'Register the players') => {
+    const promise = new Promise(function(resolve, reject) {
+        const stdIn = process.stdin;
+        stdIn.setEncoding('utf-8');
 
-    const playerNames = [];
+        const playerNames = [];
 
-    log.line(`${log.format.bold('Register the players')} ${log.format.grey('(empty line to finish)')}`);
+        log.line(`${log.format.bold(text)} ${log.format.grey('(empty line to finish)')}`);
 
-    const logPlayerNames = () => log.line(`Player ${playerNames.length + 1}: `, false);
-    logPlayerNames();
+        const logPlayerNames = () => log.line(`Player ${playerNames.length + 1}: `, false);
+        logPlayerNames();
 
-    stdIn.on('data', (name) => {
-        if (name === '\n') {
-            log.line(log.format.bold(`Tournament created!`));
-            callback(playerNames);
-            process.exit();
-        } else {
-            playerNames.push(name.replace(/ /g, '').replace('\n', ''));
-            logPlayerNames();
-        }
+        stdIn.on('data', (name) => {
+            if (name === '\n' && !playerNames.length) {
+                reject();
+            } else if (name === '\n') {
+                resolve(playerNames);
+            } else {
+                playerNames.push(name.replace(/ /g, '').replace('\n', ''));
+                logPlayerNames();
+            }
+        });
     });
+
+    return promise;
 };
 
 const startTournamentFromPlayerNames = (playerNames, roundNb, saveTo) => {
@@ -115,11 +172,11 @@ const startTournamentFromPlayerNames = (playerNames, roundNb, saveTo) => {
     log.line('');
     log.line(log.format.bold('Welcome to the new tournament!'));
     displayTournament(tournamentData);
-    saveTournamentFile(tournamentData, saveTo);
+    TournamentHelper.writeTournamentFile(tournamentData, saveTo);
+    log.line(`Successfully saved tournament to ${log.format.bold(saveTo)}`);
 };
 
 const initNewRound = (players, globalShuffle = true) => {
-    const formatPlayer = (playerName) => ({ name: playerName });
     const bestAmountOfPlayersPerRace = (playersNb) =>
         (playersNb > 9 ||
          playersNb % MAX_PLAYER_PER_RACE === 0 ||
@@ -131,7 +188,7 @@ const initNewRound = (players, globalShuffle = true) => {
     while (players.length) {
         let racePlayers = players.splice(0, bestAmountOfPlayersPerRace(players.length));
         if (!globalShuffle) racePlayers = array.shuffle(racePlayers);
-        races.push(racePlayers.map(formatPlayer));
+        races.push(racePlayers.map(TournamentHelper.formatPlayer));
     }
     return races;
 };
@@ -204,18 +261,13 @@ const displayTournament = (tournamentData, showLeaderboard = false) => {
 };
 
 const readTournamentFromFile = (file, showLeaderboard = false) => {
-    if (!fs.existsSync(file)) log.error(`Tournament file ${file} does not exist`);
-    fs.readFile(file, { encoding: 'utf-8' }, (err, fileContent) => {
-        if (err) throw err;
-        const tournamentData = JSON.parse(fileContent);
-        if (!tournamentData) log.error(`Can't read file ${file}`);
-        displayTournament(tournamentData, showLeaderboard);
-    });
+    const tournamentData = TournamentHelper.readTournamentFile(file);
+    displayTournament(tournamentData, showLeaderboard);
 };
 
 const checkExistingTournamentFile = (saveTo) => {
     if (!saveTo) return Promise.reject();
-    if (!fs.existsSync(saveTo))  return Promise.resolve();
+    if (!fs.existsSync(saveTo)) return Promise.resolve();
 
     log.line(`A tournament file ${log.format.bold(saveTo)} already exists, replace? ${log.format.grey(`(Y/n) `)}`, false);
 
@@ -237,20 +289,10 @@ const checkExistingTournamentFile = (saveTo) => {
     return promise;
 };
 
-const saveTournamentFile = (tournamentData, saveTo, verbose = true) => {
-    if (!saveTo) return;
-    const fileContent = JSON.stringify(tournamentData);
-    fs.writeFileSync(saveTo, fileContent);
-    if (verbose) log.line(`Successfully saved tournament to ${log.format.bold(saveTo)}`);
-};
-
 const startSaveRaceResults = (raceNb, file) => {
-    fs.readFile(file, { encoding: 'utf-8' }, (err, fileContent) => {
-        if (err) throw err;
-        const tournamentData = JSON.parse(fileContent);
-        if (!tournamentData || !tournamentData.races) log.error(`Can't read file ${file}`);
-        askResultsForRaceResults(tournamentData, raceNb || getLastUnfinishedRace(tournamentData), file);
-    });
+    const tournamentData = TournamentHelper.readTournamentFile(file);
+    if (!tournamentData.races) log.error(`Wrong file ${file}`);
+    askResultsForRaceResults(tournamentData, raceNb || TournamentHelper.getLastUnfinishedRace(tournamentData), file);
 };
 
 const askResultsForRaceResults = (tournamentData, raceNb, file) => {
@@ -304,29 +346,16 @@ const askResultsForRaceResults = (tournamentData, raceNb, file) => {
 
 const saveTournamentResults = (tournamentData, raceNb, raceData, file) => {
     // read again in case someone else has used the file
-    const fileContent = fs.readFileSync(file, { encoding: 'utf-8' });
-    const actualTournamentData = JSON.parse(fileContent);
-    if (!actualTournamentData) log.error(`Can't read file ${file}`);
+    const actualTournamentData = TournamentHelper.readTournamentFile(file);
     actualTournamentData.races[raceNb-1] = raceData;
     tournamentData.races = actualTournamentData.races;
     const isTournamentFinished = checkForNewRound(tournamentData);
-    saveTournamentFile(tournamentData, file, false);
+    TournamentHelper.writeTournamentFile(tournamentData, file);
     return isTournamentFinished;
 };
 
-const isRaceFinished = (tournamentData, i) =>
-    (tournamentData.races[i] || []).reduce((acc, l) => acc && typeof l.score !== 'undefined', true);
-
-const getLastUnfinishedRace = (tournamentData) => {
-    for (let i in tournamentData.races) {
-        if (!isRaceFinished(tournamentData, +i)) return (+i)+1;
-    }
-    log.error(`No unfinished race ${file}`);
-};
-
 const checkForNewRound = (tournamentData) => {
-    const playerTotal = tournamentData.players.length;
-    const racesPerRound = Math.floor(playerTotal / MAX_PLAYER_PER_RACE); // is it true, though
+    const racesPerRound = TournamentHelper.getRaceQuantityPerRound(tournamentData);
     const roundTotal = tournamentData.rounds;
 
     const roundExists = roundNb => !!tournamentData.races[roundNb * racesPerRound];
@@ -335,7 +364,7 @@ const checkForNewRound = (tournamentData) => {
     for (let roundNb = 0; roundNb < roundTotal; roundNb++) {
         let isRoundFinished = true;
         for (let raceNb = 0; raceNb < racesPerRound; raceNb++) {
-            isRoundFinished = isRoundFinished && isRaceFinished(tournamentData, roundNb * racesPerRound + raceNb);
+            isRoundFinished = isRoundFinished && TournamentHelper.isRaceFinished(tournamentData, roundNb * racesPerRound + raceNb);
         }
         if (!isRoundFinished) break;
         if (isLastRound(roundNb)) return true;
@@ -357,7 +386,7 @@ switch (params[ACTION_KEY]) {
             file: params.file || params.f || MKTM_FILE,
             players: params.players || params.p,
             lazy: params.lazy || params.l,
-            rounds: params.rounds || params.r || DEFAULT_ROUND_NB
+            rounds: params.rounds || params.r || DEFAULT_ROUND_NB,
         });
         break;
     case 'status':
@@ -384,15 +413,15 @@ ${log.format.bold('COMMANDS')}
     ${log.format.bold('--rounds')} NUMBER, ${log.format.bold('-r')} NUMBER
             Number of rounds of the tournament. ${log.format.grey(`Default: ${DEFAULT_ROUND_NB}`)}
     ${log.format.bold('--players')} NAME1 NAME2..., ${log.format.bold('-p')} NAME1 NAME2...
-            Names of the players. If none provided, will ask for them before starting.
+            Names of the players. Without this option, you'll be prompted to provided them.
     ${log.format.bold('--lazy')} NUMBER, ${log.format.bold('-l')} NUMBER
-            Creates a new game only with a number of players, default names are attributed.
-    
+            Creates a new game only with a number of players, default names will be attributed.
+
   ${log.format.blue(log.format.bold('status'))}
-  Displays the tournament's races status.
+  Displays the tournament's matches status.
     
-  ${log.format.blue(log.format.bold('results'))} [RACE_NB]
-  Enters the results of a race. If no race number provided, will ask for the first unfinished race.
+  ${log.format.blue(log.format.bold('results'))} [MATCH_NB]
+  Enters the results of a match. If no match number provided, will ask for the first unfinished match.
     
   ${log.format.blue(log.format.bold('leaderboard'))}
   Displays the leaderboard.

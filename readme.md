@@ -16,10 +16,10 @@ COMMANDS
     --rounds NUMBER, -r NUMBER
             Number of rounds of the tournament. Default: 3
     --players NAME1 NAME2..., -p NAME1 NAME2...
-            Names of the players. If none provided, will ask for them before starting.
+            Names of the players. Without this option, you'll be prompted to provided them.
     --lazy NUMBER, -l NUMBER
-            Creates a new game only with a number of players, default names are attributed.
-    
+            Creates a new game only with a number of players, default names will be attributed.
+
   status
   Displays the tournament's matches status.
     
