@@ -1,7 +1,3 @@
-// todo: refacto code structure
-// todo: warning before overriding an existing tournament
-// todo: think about a real distribution formula for bestAmountOfPlayersPerRace
-
 const fs = require("fs");
 
 const args = process.argv.slice(2);
@@ -136,6 +132,35 @@ const startTournament = (data) => {
         })
         .catch(() => {
             log.line(`Creation aborted`);
+            process.exit();
+        });
+};
+
+const addPlayers = (data) => {
+    const { file, players: givenPlayerNames, lazy } = data;
+    const generatedPlayerNames = lazy && !isNaN(+lazy) ? TournamentHelper.generateDefaultPlayerNames(+lazy) : null;
+    const playerNames = generatedPlayerNames || givenPlayerNames;
+    const tournamentData = TournamentHelper.readTournamentFile(file);
+    const currentRound = TournamentHelper.getCurrentRound(tournamentData);
+    if (currentRound > 1) log.error(`Too late to add players!`);
+    (!(playerNames) ? askForPlayerNames('Register the new players') : Promise.resolve())
+        .then(askedPlayerNames => {
+            const newPlayerNames = askedPlayerNames || playerNames;
+            if (!newPlayerNames || !newPlayerNames.length) log.error('Wrong player names');
+            tournamentData.players = [...tournamentData.players, ...newPlayerNames];
+            while (!!newPlayerNames.length) {
+                const notFullRace = TournamentHelper.getFirstNotFullRace(tournamentData);
+                console.log('notFullRace', notFullRace);
+                const formattedPlayer = TournamentHelper.formatPlayer(newPlayerNames.pop());
+                if (notFullRace) notFullRace.push(formattedPlayer);
+                else tournamentData.races.push([formattedPlayer]);
+            }
+            displayTournament(tournamentData);
+            TournamentHelper.writeTournamentFile(tournamentData, file);
+            process.exit();
+        })
+        .catch(() => {
+            log.line(`Operation aborted`);
             process.exit();
         });
 };
@@ -389,6 +414,13 @@ switch (params[ACTION_KEY]) {
             rounds: params.rounds || params.r || DEFAULT_ROUND_NB,
         });
         break;
+    case 'add':
+        addPlayers({
+            file: params.file || params.f || MKTM_FILE,
+            players: params.players || params.p,
+            lazy: params.lazy || params.l,
+        });
+        break;
     case 'status':
         readTournamentFromFile(params.file || params.f || MKTM_FILE);
         break;
@@ -407,24 +439,32 @@ Usage: node mktm.js <command> [options]
 
 ${log.format.bold('COMMANDS')}
 
-  ${log.format.blue(log.format.bold('new'))}
-  Creates a new tournament.
-  Options:
+  ${log.format.yellow(log.format.bold('new'))}
+    Creates a new tournament.
+    Options:
     ${log.format.bold('--rounds')} NUMBER, ${log.format.bold('-r')} NUMBER
             Number of rounds of the tournament. ${log.format.grey(`Default: ${DEFAULT_ROUND_NB}`)}
     ${log.format.bold('--players')} NAME1 NAME2..., ${log.format.bold('-p')} NAME1 NAME2...
             Names of the players. Without this option, you'll be prompted to provided them.
     ${log.format.bold('--lazy')} NUMBER, ${log.format.bold('-l')} NUMBER
             Creates a new game only with a number of players, default names will be attributed.
+  
+  ${log.format.yellow(log.format.bold('add'))}
+    Add a new player to the tournament, ONLY if still on round 1.
+    Options:
+    ${log.format.bold('--players')} NAME1 NAME2..., ${log.format.bold('-p')} NAME1 NAME2...
+            Names of the new players. Without this option, you'll be prompted to provided them.
+    ${log.format.bold('--lazy')} NUMBER, ${log.format.bold('-l')} NUMBER
+            Add a specific number of players, default names will be attributed.
 
-  ${log.format.blue(log.format.bold('status'))}
-  Displays the tournament's matches status.
+  ${log.format.yellow(log.format.bold('status'))}
+    Displays the tournament's matches status.
     
-  ${log.format.blue(log.format.bold('results'))} [MATCH_NB]
-  Enters the results of a match. If no match number provided, will ask for the first unfinished match.
+  ${log.format.yellow(log.format.bold('results'))} [MATCH_NB]
+    Enters the results of a match. If no match number provided, will ask for the results of the first unfinished match.
     
-  ${log.format.blue(log.format.bold('leaderboard'))}
-  Displays the leaderboard.
+  ${log.format.yellow(log.format.bold('leaderboard'))}
+    Displays the leaderboard.
 
 ${log.format.bold('GLOBAL OPTIONS')}
     

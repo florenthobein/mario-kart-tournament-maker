@@ -11,23 +11,31 @@ Usage: node mktm.js <command> [options]
 COMMANDS
 
   new
-  Creates a new tournament.
-  Options:
+    Creates a new tournament.
+    Options:
     --rounds NUMBER, -r NUMBER
             Number of rounds of the tournament. Default: 3
     --players NAME1 NAME2..., -p NAME1 NAME2...
             Names of the players. Without this option, you'll be prompted to provided them.
     --lazy NUMBER, -l NUMBER
             Creates a new game only with a number of players, default names will be attributed.
+  
+  add
+    Add a new player to the tournament, ONLY if still on round 1.
+    Options:
+    --players NAME1 NAME2..., -p NAME1 NAME2...
+            Names of the new players. Without this option, you'll be prompted to provided them.
+    --lazy NUMBER, -l NUMBER
+            Add a specific number of players, default names will be attributed.
 
   status
-  Displays the tournament's matches status.
+    Displays the tournament's matches status.
     
   results [MATCH_NB]
-  Enters the results of a match. If no match number provided, will ask for the first unfinished match.
+    Enters the results of a match. If no match number provided, will ask for the results of the first unfinished match.
     
   leaderboard
-  Displays the leaderboard.
+    Displays the leaderboard.
 
 GLOBAL OPTIONS
     
