@@ -276,7 +276,11 @@ const displayTournament = (tournamentData, showLeaderboard = false) => {
         return;
     }
 
+    const racesPerRound = TournamentHelper.getRaceQuantityPerRound(tournamentData);
     for (let i in tournamentData.races) {
+        if (i % racesPerRound === 0) {
+            log.line(`-----------\n⚡️ ROUND ${1+i/racesPerRound}${log.format.grey('/'+tournamentData.rounds)}\n-----------\n`);
+        }
         log.line(`🏁 Match ${1 + Number(i)}\n` +
             tournamentData.races[i]
                 .sort((a, b) => b.score - a.score)
