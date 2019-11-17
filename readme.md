@@ -2,11 +2,19 @@
 ----
 Simple dependency-free node script to organize Mario Kart championships.
 
+## Installation
+
 ```bash
-$ node mktm.js
+npm i -g mario-kart-tournament-maker
+```
+
+## Usage
+
+```bash
+$ mktm
 
 Mario Kart Tournament Maker
-Usage: node mktm.js <command> [options]
+Usage: mktm <command> [options]
 
 COMMANDS
 
@@ -43,6 +51,12 @@ GLOBAL OPTIONS
             Path of the tournament save file to write to / read from. Default: mktm-tournament.json
             Can also be provided through the env variable MKTM_FILE.
 
+```
+
+or for those who just downloaded the script
+
+```bash
+$ ./cli.js
 ```
 
 ## Tournament organization

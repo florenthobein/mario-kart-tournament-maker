@@ -1,0 +1,27 @@
+{
+  "name": "mario-kart-tournament-maker",
+  "version": "1.0.0",
+  "description": "Simple dependency-free node script to organize Mario Kart championships.",
+  "main": "mktm.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/florenthobein/mario-kart-tournament-maker.git"
+  },
+  "keywords": [
+    "mario",
+    "kart",
+    "tournament"
+  ],
+  "author": "Florent Hobein <florent.hobein@gmail.com>",
+  "license": "ISC",
+  "bin": {
+    "mktm": "./cli.js"
+  },
+  "bugs": {
+    "url": "https://github.com/florenthobein/mario-kart-tournament-maker/issues"
+  },
+  "homepage": "https://github.com/florenthobein/mario-kart-tournament-maker#readme"
+}

@@ -1,6 +1,8 @@
+#!/usr/bin/env node
+
 const fs = require("fs");
 
-const args = process.argv.slice(2);
+const [ , , ...args] = process.argv;
 if (!args) return;
 
 const MAX_PLAYER_PER_RACE = 4; // doesn't support 8
